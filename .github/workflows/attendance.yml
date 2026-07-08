@@ -1,0 +1,77 @@
+name: 그자출
+
+on:
+  # cron 은 UTC 기준. GitHub 스케줄러 지연을 넉넉히 흡수하려 "06:00(KST)"에 깨운다.
+  # 실제 클릭 시각은 아래 랜덤 지연 스텝이 07:30~07:55 사이로 맞춘다(마감 08:00:59 전).
+  # KST 06:00 = UTC(전날) 21:00 → 평일(월~금, KST)은 UTC 기준 일~목 = 0-4
+  schedule:
+    - cron: '0 21 * * 0-4'
+  # 수동 실행 버튼 + 드롭다운(select) 옵션
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '실제 클릭 없이 테스트만 (dry-run)'
+        type: boolean
+        default: false
+
+jobs:
+  attend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 의존성 설치
+        run: npm install
+
+      - name: Playwright 브라우저 설치
+        run: npx playwright install --with-deps chromium
+
+      # 스케줄 실행에만 랜덤 지연 적용 (수동 실행은 즉시)
+      # 핵심 안전장치: WINDOW_END(마감) 를 절대 넘겨서 대기하지 않는다.
+      - name: 랜덤 지연 (마감 전까지만 대기)
+        if: github.event_name == 'schedule'
+        env:
+          WINDOW_START: ${{ vars.GW_WINDOW_START || '07:30' }}
+          WINDOW_END: ${{ vars.GW_WINDOW_END || '07:55' }}   # 이 시각 넘겨 대기 금지 (마감 08:00:59 전 여유)
+        run: |
+          to_sec() { echo $((10#${1%:*} * 3600 + 10#${1#*:} * 60)); }
+          s=$(to_sec "$WINDOW_START")
+          e=$(to_sec "$WINDOW_END")
+          span=$((e - s))
+          # 윈도우 내 랜덤 목표 시각(초). $RANDOM: 0~32767
+          target=$((s + RANDOM % (span + 1)))
+          midnight=$(TZ=Asia/Seoul date -d "today 00:00" +%s)
+          now_sec=$(( $(date +%s) - midnight ))
+          tgt=$(printf '%02d:%02d' $((target / 3600)) $(((target % 3600) / 60)))
+          echo "윈도우 ${WINDOW_START}~${WINDOW_END} / 목표 ${tgt} / 현재 $(TZ=Asia/Seoul date +%H:%M:%S)"
+          if [ "$now_sec" -lt "$target" ]; then
+            wait=$((target - now_sec))
+            echo "${wait}초 대기 후 실행..."
+            sleep "$wait"
+          elif [ "$now_sec" -le "$e" ]; then
+            echo "목표 지났지만 마감(${WINDOW_END}) 이전 → 즉시 실행"
+          else
+            echo "::warning::GitHub 스케줄러 지연으로 마감(${WINDOW_END}) 초과! 즉시 실행하나 지각 위험"
+          fi
+
+      - name: 출결 체크 실행
+        env:
+          GW_URL: ${{ secrets.GW_URL }}
+          GW_ID: ${{ secrets.GW_ID }}
+          GW_PW: ${{ secrets.GW_PW }}
+          GW_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: node attend.js
+
+      - name: 실패 시 스크린샷 업로드
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attendance-error
+          path: attendance-error.png
+          if-no-files-found: ignore

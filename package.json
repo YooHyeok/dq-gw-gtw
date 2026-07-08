@@ -1,0 +1,12 @@
+{
+  "name": "groupware-attendance",
+  "version": "1.0.0",
+  "description": "그룹웨어 자동 출결 체크 (Playwright)",
+  "type": "module",
+  "scripts": {
+    "attend": "node attend.js"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
