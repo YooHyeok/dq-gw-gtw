@@ -81,21 +81,43 @@ async function run() {
       return;
     }
 
+    // 셀렉터를 모든 프레임(iframe 포함)에서 탐색해 해당 프레임을 반환
+    async function findFrameWith(selector) {
+      for (const f of page.frames()) {
+        if (await f.locator(selector).count().catch(() => 0)) return f;
+      }
+      return null;
+    }
+
+    // 출근 버튼 탐색 → 없으면 이미 출근했거나 버튼 미노출로 보고 안전 종료
+    const btnFrame = await findFrameWith(buttonSelector);
+    if (!btnFrame) {
+      console.log('[출결] 출근 버튼(#inBtn) 없음 → 이미 출근했거나 미노출. 처리 없이 종료 ✅');
+      return;
+    }
+
     // 출근 버튼 클릭 → HTML 확인 모달(.PUDD-UI-Dialog) 표시
-    await page.click(buttonSelector);
+    await btnFrame.locator(buttonSelector).click();
     console.log('[출결] 출근 버튼 클릭');
 
-    // 3. 확인 모달의 '확인' 버튼(#btnConfirm) 클릭과 동시에
-    //    출결 등록 API 응답(insertComeLeaveEventApi.do) 대기
-    const confirm = page.locator('#btnConfirm');
-    await confirm.waitFor({ state: 'visible', timeout: 10000 });
+    // 3. 확인 모달의 '확인' 버튼(#btnConfirm)을 프레임 무관하게 대기/탐색
+    const confirmSelector = '#btnConfirm';
+    let confirmFrame = null;
+    for (let i = 0; i < 20 && !confirmFrame; i++) {
+      confirmFrame = await findFrameWith(confirmSelector);
+      if (!confirmFrame) await page.waitForTimeout(500);
+    }
+    if (!confirmFrame) {
+      throw new Error('확인 모달(#btnConfirm)을 찾지 못함');
+    }
 
+    // 확인 클릭과 동시에 출결 등록 API 응답(insertComeLeaveEventApi.do) 대기
     const [response] = await Promise.all([
       page.waitForResponse(
         (res) => res.url().includes('insertComeLeaveEventApi.do'),
         { timeout: 15000 },
       ),
-      confirm.click(),
+      confirmFrame.locator(confirmSelector).click(),
     ]);
 
     console.log(`[출결] 확인 클릭 → API 응답 ${response.status()}`);
