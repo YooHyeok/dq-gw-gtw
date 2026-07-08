@@ -89,8 +89,13 @@ async function run() {
       return null;
     }
 
-    // 출근 버튼 탐색 → 없으면 이미 출근했거나 버튼 미노출로 보고 안전 종료
-    const btnFrame = await findFrameWith(buttonSelector);
+    // 출근 버튼 탐색 (포틀릿 지연 로딩 대비 최대 ~5초 재시도)
+    // 끝내 없으면 이미 출근했거나 버튼 미노출로 보고 안전 종료
+    let btnFrame = null;
+    for (let i = 0; i < 10 && !btnFrame; i++) {
+      btnFrame = await findFrameWith(buttonSelector);
+      if (!btnFrame) await page.waitForTimeout(500);
+    }
     if (!btnFrame) {
       console.log('[출결] 출근 버튼(#inBtn) 없음 → 이미 출근했거나 미노출. 처리 없이 종료 ✅');
       return;
