@@ -61,10 +61,23 @@ async function run() {
     const buttonSelector = '#inBtn';
 
     if (dryRun) {
-      console.log(`[출결] dry-run: 출근 버튼(${buttonSelector}) 클릭 생략`);
-      const exists = (await page.locator(buttonSelector).count()) > 0;
-      console.log(`[출결] dry-run: 버튼 존재 여부 = ${exists}`);
-      console.log('[출결] 완료 ✅');
+      console.log('[출결] dry-run 진단 시작');
+      console.log('[출결] 현재 URL:', page.url());
+
+      // 모든 프레임(iframe 포함)에서 #inBtn 검색
+      const frames = page.frames();
+      console.log(`[출결] 프레임 개수: ${frames.length}`);
+      for (const f of frames) {
+        const cnt = await f.locator(buttonSelector).count().catch(() => 0);
+        console.log(`  - frame(${f.url() || 'about:blank'}) → #inBtn ${cnt}개`);
+      }
+
+      const mainExists = (await page.locator(buttonSelector).count()) > 0;
+      console.log(`[출결] (메인 프레임) #inBtn 존재: ${mainExists}`);
+
+      // 로그인 직후 화면을 아티팩트로 확인 (이미 출근 상태인지/버튼 위치 파악용)
+      await page.screenshot({ path: 'attendance-debug.png', fullPage: true }).catch(() => {});
+      console.log('[출결] dry-run 완료 (attendance-debug.png 저장)');
       return;
     }
 
