@@ -98,6 +98,8 @@ jobs:
           GW_URL: ${{ secrets.GW_URL }}
           GW_ID: ${{ secrets.GW_ID }}
           GW_PW: ${{ secrets.GW_PW }}
+          # 연차 자동 스킵용 사원 번호 (Variables 또는 Secrets 로 등록). 없으면 연차 체크 생략.
+          GW_EMP_SEQ: ${{ vars.GW_EMP_SEQ || secrets.GW_EMP_SEQ }}
           GW_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: node attend.js
 

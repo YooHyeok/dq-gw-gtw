@@ -24,6 +24,60 @@ function loadConfig() {
 }
 
 /**
+ * 로그인된 세션으로 연차 이력 API를 호출해 오늘이 연차/휴가 기간인지 확인한다.
+ * GW_EMP_SEQ 가 없으면 확인을 생략(false)한다.
+ *
+ * @param {import('playwright').BrowserContext} context - 로그인된 컨텍스트
+ * @param {string} baseUrl - 그룹웨어 오리진 (예: https://gw.diquest.com)
+ * @returns {Promise<boolean>} 오늘이 연차면 true
+ */
+async function isOnLeaveToday(context, baseUrl) {
+  const empSeq = process.env.GW_EMP_SEQ;
+  if (!empSeq) return false; // 미설정 시 연차 체크 생략
+
+  // KST 기준 오늘 날짜 (en-CA 로케일 = YYYY-MM-DD)
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+  const year = today.slice(0, 4);
+
+  const res = await context.request.post(
+    `${baseUrl}/owattend/rest/vacation/hist/list/get`,
+    {
+      headers: { 'Content-Type': 'application/json' },
+      data: {
+        page: 1,
+        pageSize: 100, // 기본 5는 누락 위험 → 넉넉히
+        sortField: '',
+        sortType: '',
+        empSeq: String(empSeq),
+        rversYear: year,
+        docSt: 'ALL',
+        yrycStautsYn: 'Y',
+      },
+    },
+  );
+
+  if (!res.ok()) {
+    console.warn(`[출결] 연차 조회 실패(HTTP ${res.status()}) → 연차 체크 생략하고 진행`);
+    return false;
+  }
+
+  const json = await res.json().catch(() => null);
+  const list = (json && json.data) || [];
+
+  // 삭제되지 않은(delYn=N) 연차 중 오늘이 기간(beginDd~endDd)에 포함되는 것
+  const hit = list.find(
+    (v) => v.delYn === 'N' && v.beginDd <= today && today <= v.endDd,
+  );
+  if (hit) {
+    console.log(
+      `[출결] 오늘(${today})은 ${hit.dclzSeNm} (${hit.beginDd}~${hit.endDd}, docSt=${hit.docSt}) → 출근 스킵`,
+    );
+    return true;
+  }
+  return false;
+}
+
+/**
  * 그룹웨어에 로그인한 뒤 출근 버튼을 눌러 출결을 체크한다.
  *
  * @returns {Promise<void>}
@@ -78,6 +132,11 @@ async function run() {
       // 로그인 직후 화면을 아티팩트로 확인 (이미 출근 상태인지/버튼 위치 파악용)
       await page.screenshot({ path: 'attendance-debug.png', fullPage: true }).catch(() => {});
       console.log('[출결] dry-run 완료 (attendance-debug.png 저장)');
+      return;
+    }
+
+    // 2-1. 오늘 연차/휴가면 출근 스킵 (실제 실행에만 적용)
+    if (await isOnLeaveToday(context, new URL(url).origin)) {
       return;
     }
 
