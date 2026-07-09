@@ -28,7 +28,7 @@ function loadConfig() {
  * GW_EMP_SEQ 가 없으면 확인을 생략(false)한다.
  *
  * @param {import('playwright').BrowserContext} context - 로그인된 컨텍스트
- * @param {string} baseUrl - 그룹웨어 오리진 (예: https://gw.diquest.com)
+ * @param {string} baseUrl - 그룹웨어 오리진 (예: https://<그룹웨어주소>)
  * @returns {Promise<boolean>} 오늘이 연차면 true
  */
 async function isOnLeaveToday(context, baseUrl) {
