@@ -1,6 +1,6 @@
 name: 그자출
 
-# 그룹웨어 자동 출근 (평일 07:00 기상 → 08:45~08:55 랜덤 출근)
+# 그룹웨어 자동 출근 (평일 07:00 기상 → 08:45~08:55 랜덤 출근, 공휴일 제외)
 on:
   # cron 은 UTC 기준. GitHub 스케줄러 지연을 넉넉히 흡수하려 "07:00(KST)"에 깨운다.
   # 실제 클릭 시각은 아래 랜덤 지연 스텝이 08:45~08:55 사이로 맞춘다(마감 09:00:00 전).
@@ -16,7 +16,39 @@ on:
         default: false
 
 jobs:
+  # 오늘이 공휴일(대체공휴일 포함)이면 출근 잡을 스킵한다.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      is_holiday: ${{ steps.holiday.outputs.is_holiday }}
+    steps:
+      - name: 공휴일 체크 (KST 기준)
+        id: holiday
+        env:
+          # 2026 대한민국 공휴일 + 대체공휴일. 날짜만 추가/삭제하면 됨. (평일만 의미 있음)
+          HOLIDAYS: >-
+            2026-01-01
+            2026-02-16 2026-02-17 2026-02-18
+            2026-03-02
+            2026-05-05 2026-05-25
+            2026-08-17
+            2026-09-24 2026-09-25 2026-09-28
+            2026-10-05 2026-10-09
+            2026-12-25
+        run: |
+          TODAY=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          if echo " $HOLIDAYS " | grep -q " $TODAY "; then
+            echo "오늘($TODAY)은 공휴일 → 출근 스킵"
+            echo "is_holiday=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "오늘($TODAY)은 근무일 → 진행"
+            echo "is_holiday=false" >> "$GITHUB_OUTPUT"
+          fi
+
   attend:
+    needs: check
+    # 공휴일이면 스킵. 단 수동 실행(테스트)은 공휴일이어도 진행.
+    if: needs.check.outputs.is_holiday != 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: 체크아웃
