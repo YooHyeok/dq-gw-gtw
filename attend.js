@@ -118,6 +118,10 @@ async function run() {
       console.log('[출결] dry-run 진단 시작');
       console.log('[출결] 현재 URL:', page.url());
 
+      // 연차 API 동작 확인 (dry-run 에서는 스킵하지 않고 결과만 출력)
+      const onLeave = await isOnLeaveToday(context, new URL(url).origin);
+      console.log(`[출결] 오늘 연차 여부: ${onLeave}`);
+
       // 모든 프레임(iframe 포함)에서 #inBtn 검색
       const frames = page.frames();
       console.log(`[출결] 프레임 개수: ${frames.length}`);
